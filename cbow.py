@@ -6,14 +6,24 @@ import keras.backend as K
 from keras.models import  Sequential
 from keras.layers import Embedding, Dense, Lambda
 import pandas as pd
-#from pymorphy2 import analyzer
+import csv
+import os
+import re
+from  pymorphy2 import MorphAnalyzer
 
 
-def parse_file(file):
-    with open(file, encoding='utf-8') as f:
-        text = f.read().lower().split()
-    for i in range(len(text)):
-        text[i] = text[i].strip(punctuation)
+def collect_files(path):
+    text = ''
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            print(file)
+            with open(os.path.join(path, file), encoding='utf-8') as f:
+                text += f.read()
+    return text
+
+
+def parse_file(utext):
+    text = re.sub('[^а-яА-Я\-]', ' ', utext).lower().split()
     return text
 
 
@@ -31,6 +41,13 @@ def remove_stopwords(words, stopwords):
         if word not in stopwords and word != '':
             res.append(word)
     return res
+
+
+def create_lemmas(text):
+    morph = MorphAnalyzer()
+    for i in range(len(text)):
+        text[i] = morph.parse(text[i])[0].normal_form
+    return text
 
 
 def build_vocab(texts):
@@ -55,10 +72,12 @@ def cbow_pairs_generator(textinds, window_size, vocab_size):
         yield x, y
 
 
-def preprocessing(file):
-    text = parse_file(file)
+def preprocessing(start_path):
+    utext = collect_files(start_path)
+    text = parse_file(utext)
     stopwords = create_stopwords()
     text = remove_stopwords(text, stopwords)
+    text = create_lemmas(text)
     word2ind, ind2word, textinds = build_vocab(text)
     return word2ind, ind2word, textinds
 
@@ -95,19 +114,32 @@ def show_results(weights, ind2word, word2ind):
     return similar
 
 
-def save_weights(weights):
-    with open('weights.txt', mode='w', encoding='utf-8') as f:
-        f.write(weights)
+def save_weights(weights, ind2word):
+    file = pd.DataFrame(weights, index=list(ind2word.values())[:-1])
+    print(file)
+    file.to_csv(r'C:\Users\raski\.PyCharmCE2019.2\config\scratches\weights.csv', encoding='utf-8-sig')
+
+
+def export_texts(word2ind):
+    res = []
+    for word, ind in word2ind.items():
+        res.append(word)
+        res.append(ind)
+    with open('word2ind.txt', 'w', encoding='utf-8') as f:
+        f.write('\t'.join(map(str, res)))
 
 
 def main():
-    file = 'sample.txt'
+    file_path = r'C:\Users\raski\.PyCharmCE2019.2\config\scratches\samples'
     embed_size = 100
     window_size = 2
-    word2ind, ind2word, textinds = preprocessing(file)
+    word2ind, ind2word, textinds = preprocessing(file_path)
+    export_texts(word2ind)
     cbow = build_network(vocab_size=len(word2ind), embed_size=embed_size, window_size=window_size)
     trained = train(cbow=cbow, textinds=textinds, window_size=window_size, vocab_size=len(word2ind))
     weights = get_cbow_weights(trained)
+    print(weights)
+    save_weights(weights, ind2word)
     print(pd.DataFrame(weights, index=list(ind2word.values())[1:]).head())
     print(show_results(weights=weights, word2ind=word2ind, ind2word=ind2word))
 
